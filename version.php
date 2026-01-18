@@ -24,8 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2025011400;        // The current plugin version (Date: YYYYMMDDXX).
+$plugin->version   = 2025011900;        // The current plugin version (Date: YYYYMMDDXX).
 $plugin->requires  = 2024100700;        // Requires Moodle 5.0+.
 $plugin->component = 'local_syncqueue'; // Full name of the plugin.
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.1.0';
+$plugin->release   = '0.2.0';           // Added admin suite: dashboard, school management, queue viewer.

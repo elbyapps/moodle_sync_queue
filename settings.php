@@ -25,7 +25,20 @@
 defined('MOODLE_INTERNAL') || die();
 
 if ($hassiteconfig) {
-    $settings = new admin_settingpage('local_syncqueue', get_string('pluginname', 'local_syncqueue'));
+    // Create a settings category for the plugin.
+    $ADMIN->add('localplugins', new admin_category(
+        'local_syncqueue_category',
+        get_string('pluginname', 'local_syncqueue')
+    ));
+
+    // Main settings page.
+    $settings = new admin_settingpage('local_syncqueue', get_string('settings', 'local_syncqueue'));
+
+    // Add JS for dynamic show/hide of mode-specific settings.
+    $settings->add(new \local_syncqueue\admin_setting_jsinclude(
+        'local_syncqueue/settingsjs',
+        'local_syncqueue/settings'
+    ));
 
     // Enable/disable sync queue.
     $settings->add(new admin_setting_configcheckbox(
@@ -159,5 +172,27 @@ if ($hassiteconfig) {
         0
     ));
 
-    $ADMIN->add('localplugins', $settings);
+    // Add settings page to category.
+    $ADMIN->add('local_syncqueue_category', $settings);
+
+    // Dashboard page.
+    $ADMIN->add('local_syncqueue_category', new admin_externalpage(
+        'local_syncqueue_dashboard',
+        get_string('dashboard', 'local_syncqueue'),
+        new moodle_url('/local/syncqueue/dashboard.php')
+    ));
+
+    // Queue viewer page (school mode).
+    $ADMIN->add('local_syncqueue_category', new admin_externalpage(
+        'local_syncqueue_queue',
+        get_string('queueviewer', 'local_syncqueue'),
+        new moodle_url('/local/syncqueue/queue.php')
+    ));
+
+    // School management page (central mode).
+    $ADMIN->add('local_syncqueue_category', new admin_externalpage(
+        'local_syncqueue_schools',
+        get_string('schoolmanagement', 'local_syncqueue'),
+        new moodle_url('/local/syncqueue/schools.php')
+    ));
 }
