@@ -24,6 +24,7 @@
 
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
+require_once(__DIR__ . '/lib.php');
 
 admin_externalpage_setup('local_syncqueue_queue');
 
@@ -175,6 +176,7 @@ if ($action && confirm_sesskey()) {
 }
 
 echo $OUTPUT->header();
+echo local_syncqueue_get_navigation('queue');
 echo $OUTPUT->heading(get_string('queueviewer', 'local_syncqueue'));
 
 // Display queue statistics.
