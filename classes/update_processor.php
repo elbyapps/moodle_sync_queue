@@ -191,8 +191,7 @@ class update_processor {
      * @return int Category ID.
      */
     protected function get_sync_category(): int {
-        global $DB, $CFG;
-        require_once($CFG->libdir . '/coursecatlib.php');
+        global $DB;
 
         // Check for existing sync category.
         $category = $DB->get_record('course_categories', ['idnumber' => 'syncqueue_courses']);
