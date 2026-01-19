@@ -64,8 +64,9 @@ class sync_client {
         try {
             $response = $this->request('GET', '/webservice/rest/server.php', [
                 'wstoken' => $this->apikey,
-                'wsfunction' => 'local_syncapi_status',
+                'wsfunction' => 'local_syncqueue_status',
                 'moodlewsrestformat' => 'json',
+                'schoolid' => $this->schoolid,
             ]);
             return isset($response['status']) && $response['status'] === 'ok';
         } catch (\Exception $e) {
@@ -104,7 +105,7 @@ class sync_client {
 
         $response = $this->request('POST', '/webservice/rest/server.php', [
             'wstoken' => $this->apikey,
-            'wsfunction' => 'local_syncapi_upload',
+            'wsfunction' => 'local_syncqueue_upload',
             'moodlewsrestformat' => 'json',
             'data' => json_encode($payload),
         ]);
@@ -162,7 +163,7 @@ class sync_client {
     public function download(int $since = 0): array {
         $response = $this->request('GET', '/webservice/rest/server.php', [
             'wstoken' => $this->apikey,
-            'wsfunction' => 'local_syncapi_download',
+            'wsfunction' => 'local_syncqueue_download',
             'moodlewsrestformat' => 'json',
             'schoolid' => $this->schoolid,
             'since' => $since,
@@ -179,7 +180,7 @@ class sync_client {
     public function report_sync(array $results): void {
         $this->request('POST', '/webservice/rest/server.php', [
             'wstoken' => $this->apikey,
-            'wsfunction' => 'local_syncapi_report',
+            'wsfunction' => 'local_syncqueue_report',
             'moodlewsrestformat' => 'json',
             'schoolid' => $this->schoolid,
             'results' => json_encode($results),
@@ -213,13 +214,20 @@ class sync_client {
 
         $info = $curl->get_info();
         $errno = $curl->get_errno();
+        $error = $curl->error;
 
-        if ($errno) {
-            throw new moodle_exception('error_noconnection', 'local_syncqueue', '', $curl->error);
+        // Check for curl errors or blocked URLs.
+        if ($errno || $response === false) {
+            throw new moodle_exception('error_noconnection', 'local_syncqueue', '', $error ?: 'Connection failed');
         }
 
-        if ($info['http_code'] !== 200) {
-            throw new moodle_exception('error_invalidresponse', 'local_syncqueue', '', $info['http_code']);
+        // Check HTTP status code (handle case where it might not be set).
+        $httpcode = $info['http_code'] ?? 0;
+        if ($httpcode !== 200) {
+            if ($httpcode === 0) {
+                throw new moodle_exception('error_noconnection', 'local_syncqueue', '', 'URL may be blocked or unreachable');
+            }
+            throw new moodle_exception('error_invalidresponse', 'local_syncqueue', '', $httpcode);
         }
 
         $decoded = json_decode($response, true);
