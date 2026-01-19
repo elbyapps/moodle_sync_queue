@@ -245,6 +245,9 @@ class sync_client {
             'file' => $filename,
         ];
 
+        debugging('Downloading backup from: ' . $url, DEBUG_DEVELOPER);
+        debugging('Params: schoolid=' . $this->schoolid . ', file=' . $filename, DEBUG_DEVELOPER);
+
         $curl = new \curl();
         $curl->setopt([
             'CURLOPT_TIMEOUT' => 600, // 10 minutes for large files.
@@ -254,6 +257,7 @@ class sync_client {
         // Download to file.
         $fp = fopen($destpath, 'wb');
         if (!$fp) {
+            debugging('Failed to open destination file for writing: ' . $destpath, DEBUG_DEVELOPER);
             return false;
         }
 
@@ -263,11 +267,20 @@ class sync_client {
 
         $info = $curl->get_info();
         $errno = $curl->get_errno();
+        $error = $curl->error;
+
+        debugging('Download response - HTTP code: ' . ($info['http_code'] ?? 'none') . ', errno: ' . $errno . ', error: ' . $error, DEBUG_DEVELOPER);
 
         if ($errno || ($info['http_code'] ?? 0) !== 200) {
+            // Read the error response if any
+            $errorContent = file_exists($destpath) ? file_get_contents($destpath) : '';
+            debugging('Download failed. Response content: ' . substr($errorContent, 0, 500), DEBUG_DEVELOPER);
             @unlink($destpath);
             return false;
         }
+
+        $filesize = file_exists($destpath) ? filesize($destpath) : 0;
+        debugging('Download complete. File size: ' . $filesize . ' bytes', DEBUG_DEVELOPER);
 
         return file_exists($destpath) && filesize($destpath) > 0;
     }

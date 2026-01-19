@@ -59,13 +59,35 @@ if (!$school || $school->status !== 'active') {
 $backupmanager = new \local_syncqueue\backup_manager();
 $filepath = $backupmanager->get_backup_path($filename);
 
-if (!$filepath || !file_exists($filepath)) {
+// Debug: Log the request (to PHP error log since we can't use Moodle debugging here).
+error_log("SYNCQUEUE backup_download: schoolid=$schoolid, filename=$filename, filepath=" . ($filepath ?? 'null'));
+
+if (!$filepath) {
+    error_log("SYNCQUEUE backup_download: get_backup_path returned null");
     http_response_code(404);
-    die('Backup file not found');
+    die('Backup file not found: path is null');
+}
+
+if (!file_exists($filepath)) {
+    error_log("SYNCQUEUE backup_download: File does not exist at $filepath");
+    http_response_code(404);
+    die('Backup file not found: ' . $filepath);
+}
+
+if (!is_readable($filepath)) {
+    error_log("SYNCQUEUE backup_download: File not readable at $filepath");
+    http_response_code(500);
+    die('Backup file not readable');
 }
 
 // Serve the file.
 $filesize = filesize($filepath);
+error_log("SYNCQUEUE backup_download: Serving file $filepath (size: $filesize bytes)");
+
+// Clear any output buffers that Moodle might have started.
+while (ob_get_level()) {
+    ob_end_clean();
+}
 
 header('Content-Type: application/octet-stream');
 header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -76,10 +98,17 @@ header('Expires: 0');
 
 // Output file in chunks to handle large files.
 $handle = fopen($filepath, 'rb');
+if (!$handle) {
+    error_log("SYNCQUEUE backup_download: Failed to open file for reading");
+    http_response_code(500);
+    die('Failed to open backup file');
+}
+
 while (!feof($handle)) {
     echo fread($handle, 8192);
     flush();
 }
 fclose($handle);
 
+error_log("SYNCQUEUE backup_download: File sent successfully");
 exit;
