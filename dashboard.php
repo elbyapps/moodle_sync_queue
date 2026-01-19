@@ -61,11 +61,16 @@ if ($action && confirm_sesskey()) {
         }
     } else if ($action === 'download' && $mode === 'school') {
         try {
+            $schoolid = get_config('local_syncqueue', 'schoolid');
+            debugging('School requesting download with schoolid: ' . $schoolid, DEBUG_DEVELOPER);
+
             $client = new \local_syncqueue\sync_client();
             $updates = $client->download(0); // Get all pending updates.
 
+            debugging('Received ' . count($updates) . ' updates from central', DEBUG_DEVELOPER);
+
             if (empty($updates)) {
-                \core\notification::info(get_string('noupdates', 'local_syncqueue'));
+                \core\notification::info(get_string('noupdates', 'local_syncqueue') . ' (schoolid: ' . $schoolid . ')');
             } else {
                 $processor = new \local_syncqueue\update_processor();
                 $results = $processor->process($updates);

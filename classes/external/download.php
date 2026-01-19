@@ -94,6 +94,9 @@ class download extends external_api {
             min($params['limit'], 500) // Cap at 500.
         );
 
+        // Debug: Log what we found.
+        debugging('Download request from school: ' . $params['schoolid'] . ', since: ' . $params['since'] . ', found: ' . count($updates), DEBUG_DEVELOPER);
+
         // Format updates for response.
         $formattedUpdates = [];
         foreach ($updates as $update) {
