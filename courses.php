@@ -57,12 +57,15 @@ if ($action === 'push' && confirm_sesskey() && !empty($courseids)) {
         $course = $DB->get_record('course', ['id' => $courseid]);
         if ($course && $course->id != SITEID) {
             // Create backup of the course.
+            debugging('Creating backup for course: ' . $course->shortname . ' (ID: ' . $courseid . ')', DEBUG_DEVELOPER);
             $backupfile = $backupmanager->create_course_backup($courseid, $USER->id);
 
             if ($backupfile) {
+                debugging('Backup created successfully: ' . $backupfile, DEBUG_DEVELOPER);
                 $updatemanager->queue_course_update_with_backup($course, $backupfile, 'create');
                 $count++;
             } else {
+                debugging('Backup creation failed for course: ' . $courseid, DEBUG_DEVELOPER);
                 // Queue without backup (metadata only).
                 $updatemanager->queue_course_update($course, 'create');
                 $failed++;

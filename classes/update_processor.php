@@ -142,10 +142,13 @@ class update_processor {
 
         // Course doesn't exist locally - create it.
         // Check if we have a backup to restore.
+        debugging('Checking for backup data: ' . json_encode($data['backup'] ?? 'NO BACKUP KEY'), DEBUG_DEVELOPER);
         if (!empty($data['backup']) && !empty($data['backup']['has_backup'])) {
+            debugging('Backup found! Attempting restore from: ' . ($data['backup']['filename'] ?? 'unknown'), DEBUG_DEVELOPER);
             return $this->restore_course_from_backup($data, $centralid);
         }
 
+        debugging('No backup data, creating course from metadata only', DEBUG_DEVELOPER);
         return $this->create_course_from_central($data, $centralid);
     }
 
@@ -170,6 +173,7 @@ class update_processor {
         $backuppath = $tempdir . '/' . $filename;
 
         try {
+            debugging('Downloading backup file: ' . $filename . ' to ' . $backuppath, DEBUG_DEVELOPER);
             $client = new sync_client();
             $downloaded = $client->download_backup($filename, $backuppath);
 
@@ -179,20 +183,26 @@ class update_processor {
                 return $this->create_course_from_central($data, $centralid);
             }
 
+            $filesize = file_exists($backuppath) ? filesize($backuppath) : 0;
+            debugging('Backup downloaded successfully. File size: ' . $filesize . ' bytes', DEBUG_DEVELOPER);
+
             // Restore the course.
             $backupmanager = new backup_manager();
             $userid = $USER->id ?: get_admin()->id;
 
+            debugging('Starting course restore with userid: ' . $userid . ', categoryid: ' . $categoryid, DEBUG_DEVELOPER);
             $newcourseid = $backupmanager->restore_course($backuppath, $categoryid, $userid);
 
             // Clean up temp file.
             @unlink($backuppath);
 
             if (!$newcourseid) {
-                debugging('Failed to restore course from backup', DEBUG_DEVELOPER);
+                debugging('Failed to restore course from backup - restore returned null', DEBUG_DEVELOPER);
                 // Fall back to metadata-only creation.
                 return $this->create_course_from_central($data, $centralid);
             }
+
+            debugging('Course restored successfully! New course ID: ' . $newcourseid, DEBUG_DEVELOPER);
 
             // Update course with correct metadata.
             global $DB;

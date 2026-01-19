@@ -49,6 +49,7 @@ class backup_manager {
         require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
 
         try {
+            debugging('Creating backup controller for course ' . $courseid, DEBUG_DEVELOPER);
             // Create backup controller.
             $bc = new backup_controller(
                 backup::TYPE_1COURSE,
@@ -58,6 +59,7 @@ class backup_manager {
                 backup::MODE_GENERAL,
                 $userid
             );
+            debugging('Backup controller created successfully', DEBUG_DEVELOPER);
 
             // Configure backup settings for full course.
             $plan = $bc->get_plan();
@@ -93,16 +95,21 @@ class backup_manager {
             }
 
             // Execute backup.
+            debugging('Executing backup plan...', DEBUG_DEVELOPER);
             $bc->execute_plan();
+            debugging('Backup plan executed', DEBUG_DEVELOPER);
 
             // Get the backup file.
             $results = $bc->get_results();
-            $file = $results['backup_destination'];
+            $file = $results['backup_destination'] ?? null;
 
             if (!$file) {
+                debugging('No backup_destination in results', DEBUG_DEVELOPER);
                 $bc->destroy();
                 return null;
             }
+
+            debugging('Backup file created in Moodle file system: ' . $file->get_filename(), DEBUG_DEVELOPER);
 
             // Move to our sync directory.
             $backupdir = $CFG->dataroot . '/' . self::BACKUP_DIR;
@@ -115,6 +122,9 @@ class backup_manager {
 
             // Copy file content to our directory.
             $file->copy_content_to($filepath);
+
+            $filesize = file_exists($filepath) ? filesize($filepath) : 0;
+            debugging('Backup copied to: ' . $filepath . ' (size: ' . $filesize . ' bytes)', DEBUG_DEVELOPER);
 
             $bc->destroy();
 
