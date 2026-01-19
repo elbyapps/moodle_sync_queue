@@ -43,8 +43,10 @@ $string['schoolid'] = 'School identifier';
 $string['schoolid_desc'] = 'Unique identifier for this school instance (e.g., school_kigali_001).';
 $string['centralserver'] = 'Central server URL';
 $string['centralserver_desc'] = 'The URL of the central Moodle server to sync with.';
-$string['apikey'] = 'API key';
-$string['apikey_desc'] = 'Secret key for authenticating with the central server.';
+$string['wstoken'] = 'Web service token';
+$string['wstoken_desc'] = 'The Moodle web service token from the central server. Create a token for the "Sync Queue Service" on the central server.';
+$string['apikey'] = 'School API key';
+$string['apikey_desc'] = 'The API key generated when this school was registered on the central server.';
 $string['syncinterval'] = 'Sync interval';
 $string['syncinterval_desc'] = 'How often to attempt synchronization.';
 

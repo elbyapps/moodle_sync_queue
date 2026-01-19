@@ -87,7 +87,15 @@ if ($hassiteconfig) {
         PARAM_URL
     ));
 
-    // API key (for school to authenticate with central).
+    // Web service token (for Moodle web service authentication).
+    $settings->add(new admin_setting_configpasswordunmask(
+        'local_syncqueue/wstoken',
+        get_string('wstoken', 'local_syncqueue'),
+        get_string('wstoken_desc', 'local_syncqueue'),
+        ''
+    ));
+
+    // School API key (for school-level authentication).
     $settings->add(new admin_setting_configpasswordunmask(
         'local_syncqueue/apikey',
         get_string('apikey', 'local_syncqueue'),

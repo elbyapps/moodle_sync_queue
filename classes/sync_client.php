@@ -31,7 +31,10 @@ class sync_client {
     /** @var string Central server URL */
     protected string $serverurl;
 
-    /** @var string API key for authentication */
+    /** @var string Web service token for Moodle authentication */
+    protected string $wstoken;
+
+    /** @var string School API key for school-level authentication */
     protected string $apikey;
 
     /** @var string School identifier */
@@ -47,10 +50,20 @@ class sync_client {
      */
     public function __construct() {
         $this->serverurl = get_config('local_syncqueue', 'centralserver');
+        $this->wstoken = get_config('local_syncqueue', 'wstoken');
         $this->apikey = get_config('local_syncqueue', 'apikey');
         $this->schoolid = get_config('local_syncqueue', 'schoolid');
 
-        if (empty($this->serverurl) || empty($this->apikey) || empty($this->schoolid)) {
+        if (empty($this->serverurl) || empty($this->schoolid)) {
+            throw new moodle_exception('error_notconfigured', 'local_syncqueue');
+        }
+
+        // Use apikey as wstoken if wstoken not set (backwards compatibility).
+        if (empty($this->wstoken)) {
+            $this->wstoken = $this->apikey;
+        }
+
+        if (empty($this->wstoken)) {
             throw new moodle_exception('error_notconfigured', 'local_syncqueue');
         }
     }
@@ -73,10 +86,11 @@ class sync_client {
     public function check_connection_detailed(): array {
         try {
             $response = $this->request('GET', '/webservice/rest/server.php', [
-                'wstoken' => $this->apikey,
+                'wstoken' => $this->wstoken,
                 'wsfunction' => 'local_syncqueue_status',
                 'moodlewsrestformat' => 'json',
                 'schoolid' => $this->schoolid,
+                'apikey' => $this->apikey,
             ]);
 
             if (isset($response['status']) && $response['status'] === 'ok') {
@@ -128,9 +142,11 @@ class sync_client {
         }
 
         $response = $this->request('POST', '/webservice/rest/server.php', [
-            'wstoken' => $this->apikey,
+            'wstoken' => $this->wstoken,
             'wsfunction' => 'local_syncqueue_upload',
             'moodlewsrestformat' => 'json',
+            'schoolid' => $this->schoolid,
+            'apikey' => $this->apikey,
             'data' => json_encode($payload),
         ]);
 
@@ -186,7 +202,7 @@ class sync_client {
      */
     public function download(int $since = 0): array {
         $response = $this->request('GET', '/webservice/rest/server.php', [
-            'wstoken' => $this->apikey,
+            'wstoken' => $this->wstoken,
             'wsfunction' => 'local_syncqueue_download',
             'moodlewsrestformat' => 'json',
             'schoolid' => $this->schoolid,
@@ -204,10 +220,11 @@ class sync_client {
      */
     public function report_sync(array $results): void {
         $this->request('POST', '/webservice/rest/server.php', [
-            'wstoken' => $this->apikey,
+            'wstoken' => $this->wstoken,
             'wsfunction' => 'local_syncqueue_report',
             'moodlewsrestformat' => 'json',
             'schoolid' => $this->schoolid,
+            'apikey' => $this->apikey,
             'results' => json_encode($results),
         ]);
     }
