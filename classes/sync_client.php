@@ -61,6 +61,16 @@ class sync_client {
      * @return bool True if server is reachable.
      */
     public function check_connection(): bool {
+        $result = $this->check_connection_detailed();
+        return $result['success'];
+    }
+
+    /**
+     * Check connection with detailed result.
+     *
+     * @return array ['success' => bool, 'message' => string]
+     */
+    public function check_connection_detailed(): array {
         try {
             $response = $this->request('GET', '/webservice/rest/server.php', [
                 'wstoken' => $this->apikey,
@@ -68,9 +78,23 @@ class sync_client {
                 'moodlewsrestformat' => 'json',
                 'schoolid' => $this->schoolid,
             ]);
-            return isset($response['status']) && $response['status'] === 'ok';
+
+            if (isset($response['status']) && $response['status'] === 'ok') {
+                return [
+                    'success' => true,
+                    'message' => $response['message'] ?? 'Connected successfully',
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => $response['message'] ?? 'Unknown error from server',
+                ];
+            }
         } catch (\Exception $e) {
-            return false;
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
         }
     }
 
@@ -166,6 +190,7 @@ class sync_client {
             'wsfunction' => 'local_syncqueue_download',
             'moodlewsrestformat' => 'json',
             'schoolid' => $this->schoolid,
+            'apikey' => $this->apikey,
             'since' => $since,
         ]);
 
@@ -232,7 +257,9 @@ class sync_client {
 
         $decoded = json_decode($response, true);
         if ($decoded === null) {
-            throw new moodle_exception('error_invalidresponse', 'local_syncqueue');
+            // Include part of the response for debugging.
+            $preview = substr($response, 0, 200);
+            throw new moodle_exception('error_invalidresponse', 'local_syncqueue', '', 'Response: ' . $preview);
         }
 
         if (isset($decoded['exception'])) {

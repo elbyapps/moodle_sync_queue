@@ -102,7 +102,7 @@ $string['clearfailed'] = 'Clear failed items';
 $string['error_noconnection'] = 'Cannot connect to central server';
 $string['error_authfailed'] = 'Authentication failed';
 $string['error_syncfailed'] = 'Synchronization failed: {$a}';
-$string['error_invalidresponse'] = 'Invalid response from central server';
+$string['error_invalidresponse'] = 'Invalid response from central server: {$a}';
 $string['error_conflict'] = 'Data conflict detected for {$a}';
 $string['error_notconfigured'] = 'Sync queue is not properly configured';
 
@@ -193,3 +193,15 @@ $string['status_active'] = 'Active';
 $string['status_suspended'] = 'Suspended';
 $string['status_pending'] = 'Pending';
 $string['schoolid_help'] = 'A unique identifier for this school (e.g., school_kigali_001). This ID must be unique across all registered schools.';
+
+// Course sync.
+$string['syncedcourses'] = 'Synced Courses';
+$string['syncedcoursesdesc'] = 'Courses synchronized from the central server.';
+$string['pushcourses'] = 'Push Courses';
+$string['selectcourses'] = 'Select courses to push to schools';
+$string['pushtoschools'] = 'Push to Schools';
+$string['coursespushed'] = '{$a} course(s) queued for sync to schools';
+$string['nocourses'] = 'No courses available to push';
+$string['downloadupdates'] = 'Download Updates';
+$string['updatessuccess'] = 'Downloaded and processed {$a->success} updates ({$a->failed} failed, {$a->skipped} skipped)';
+$string['noupdates'] = 'No updates available from central server';
