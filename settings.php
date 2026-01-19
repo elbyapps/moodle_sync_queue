@@ -195,4 +195,11 @@ if ($hassiteconfig) {
         get_string('schoolmanagement', 'local_syncqueue'),
         new moodle_url('/local/syncqueue/schools.php')
     ));
+
+    // Push courses page (central mode).
+    $ADMIN->add('local_syncqueue_category', new admin_externalpage(
+        'local_syncqueue_courses',
+        get_string('pushcourses', 'local_syncqueue'),
+        new moodle_url('/local/syncqueue/courses.php')
+    ));
 }

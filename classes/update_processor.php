@@ -106,30 +106,144 @@ class update_processor {
      * @return bool Success.
      */
     protected function process_course_update(array $update): bool {
-        global $DB;
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
 
-        $data = $update['data'];
+        $data = is_string($update['data']) ? json_decode($update['data'], true) : $update['data'];
+        $action = $update['action'] ?? 'update';
         $centralid = $data['id'];
 
         // Check if we already have this course mapped.
         $localid = $this->mapper->get_local_id('course', $centralid);
+
+        if ($action === 'delete') {
+            if ($localid) {
+                delete_course($localid, false);
+                $this->mapper->delete_mapping('course', $localid);
+            }
+            return true;
+        }
 
         if ($localid) {
             // Update existing course.
             $course = $DB->get_record('course', ['id' => $localid]);
             if ($course) {
                 $course->fullname = $data['fullname'];
-                $course->shortname = $data['shortname'];
+                $course->shortname = $this->ensure_unique_shortname($data['shortname'], $localid);
                 $course->summary = $data['summary'] ?? '';
+                $course->visible = $data['visible'] ?? 1;
+                $course->startdate = $data['startdate'] ?? time();
+                $course->enddate = $data['enddate'] ?? 0;
                 $course->timemodified = time();
-                $DB->update_record('course', $course);
+                update_course($course);
                 return true;
             }
         }
 
-        // Course doesn't exist locally - skip for now.
-        // Full course creation would require backup/restore.
-        return false;
+        // Course doesn't exist locally - create it.
+        return $this->create_course_from_central($data, $centralid);
+    }
+
+    /**
+     * Create a new course from central server data.
+     *
+     * @param array $data Course data from central.
+     * @param int $centralid Central course ID.
+     * @return bool Success.
+     */
+    protected function create_course_from_central(array $data, int $centralid): bool {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        // Get or create the sync category.
+        $categoryid = $this->get_sync_category();
+
+        // Prepare course data.
+        $coursedata = new stdClass();
+        $coursedata->fullname = $data['fullname'];
+        $coursedata->shortname = $this->ensure_unique_shortname($data['shortname']);
+        $coursedata->category = $categoryid;
+        $coursedata->summary = $data['summary'] ?? '';
+        $coursedata->summaryformat = FORMAT_HTML;
+        $coursedata->format = 'topics';
+        $coursedata->visible = $data['visible'] ?? 1;
+        $coursedata->startdate = $data['startdate'] ?? time();
+        $coursedata->enddate = $data['enddate'] ?? 0;
+        $coursedata->idnumber = $data['idnumber'] ?? 'central_' . $centralid;
+        $coursedata->numsections = 10;
+
+        try {
+            $newcourse = create_course($coursedata);
+
+            // Save mapping.
+            $this->mapper->set_mapping('course', $newcourse->id, $centralid);
+
+            return true;
+        } catch (\Exception $e) {
+            debugging('Failed to create course: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            return false;
+        }
+    }
+
+    /**
+     * Get or create the category for synced courses.
+     *
+     * @return int Category ID.
+     */
+    protected function get_sync_category(): int {
+        global $DB, $CFG;
+        require_once($CFG->libdir . '/coursecatlib.php');
+
+        // Check for existing sync category.
+        $category = $DB->get_record('course_categories', ['idnumber' => 'syncqueue_courses']);
+
+        if ($category) {
+            return $category->id;
+        }
+
+        // Create the category.
+        $categorydata = new stdClass();
+        $categorydata->name = get_string('syncedcourses', 'local_syncqueue');
+        $categorydata->idnumber = 'syncqueue_courses';
+        $categorydata->description = get_string('syncedcoursesdesc', 'local_syncqueue');
+        $categorydata->parent = 0;
+
+        $newcategory = \core_course_category::create($categorydata);
+
+        return $newcategory->id;
+    }
+
+    /**
+     * Ensure course shortname is unique.
+     *
+     * @param string $shortname Desired shortname.
+     * @param int|null $excludeid Exclude this course ID from check.
+     * @return string Unique shortname.
+     */
+    protected function ensure_unique_shortname(string $shortname, ?int $excludeid = null): string {
+        global $DB;
+
+        $params = ['shortname' => $shortname];
+        $where = 'shortname = :shortname';
+
+        if ($excludeid) {
+            $where .= ' AND id != :excludeid';
+            $params['excludeid'] = $excludeid;
+        }
+
+        if (!$DB->record_exists_select('course', $where, $params)) {
+            return $shortname;
+        }
+
+        // Add suffix to make unique.
+        $counter = 1;
+        do {
+            $newshortname = $shortname . '_' . $counter;
+            $params['shortname'] = $newshortname;
+            $counter++;
+        } while ($DB->record_exists_select('course', $where, $params));
+
+        return $newshortname;
     }
 
     /**

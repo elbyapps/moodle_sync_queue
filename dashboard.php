@@ -42,10 +42,11 @@ if ($action && confirm_sesskey()) {
     if ($action === 'testconnection' && $mode === 'school') {
         try {
             $client = new \local_syncqueue\sync_client();
-            if ($client->check_connection()) {
-                \core\notification::success(get_string('connectionok', 'local_syncqueue'));
+            $result = $client->check_connection_detailed();
+            if ($result['success']) {
+                \core\notification::success(get_string('connectionok', 'local_syncqueue') . ' - ' . $result['message']);
             } else {
-                \core\notification::error(get_string('connectionfailed', 'local_syncqueue'));
+                \core\notification::error(get_string('connectionfailed', 'local_syncqueue') . ': ' . $result['message']);
             }
         } catch (\Exception $e) {
             \core\notification::error(get_string('connectionfailed', 'local_syncqueue') . ': ' . $e->getMessage());
@@ -57,6 +58,26 @@ if ($action && confirm_sesskey()) {
             \core\notification::success(get_string('syncstarted', 'local_syncqueue'));
         } catch (\Exception $e) {
             \core\notification::error(get_string('syncfailed', 'local_syncqueue') . ': ' . $e->getMessage());
+        }
+    } else if ($action === 'download' && $mode === 'school') {
+        try {
+            $client = new \local_syncqueue\sync_client();
+            $updates = $client->download(0); // Get all pending updates.
+
+            if (empty($updates)) {
+                \core\notification::info(get_string('noupdates', 'local_syncqueue'));
+            } else {
+                $processor = new \local_syncqueue\update_processor();
+                $results = $processor->process($updates);
+
+                $msg = new stdClass();
+                $msg->success = $results['success'];
+                $msg->failed = $results['failed'];
+                $msg->skipped = $results['skipped'];
+                \core\notification::success(get_string('updatessuccess', 'local_syncqueue', $msg));
+            }
+        } catch (\Exception $e) {
+            \core\notification::error(get_string('connectionfailed', 'local_syncqueue') . ': ' . $e->getMessage());
         }
     }
     redirect($PAGE->url);
@@ -170,11 +191,14 @@ function render_school_dashboard(): string {
     $html .= html_writer::end_div();
     $html .= html_writer::start_div('card-body');
 
+    $downloadurl = new moodle_url('/local/syncqueue/dashboard.php', ['action' => 'download', 'sesskey' => sesskey()]);
+    $html .= html_writer::link($downloadurl, get_string('downloadupdates', 'local_syncqueue'), ['class' => 'btn btn-primary mr-2']);
+
     $syncurl = new moodle_url('/local/syncqueue/dashboard.php', ['action' => 'syncnow', 'sesskey' => sesskey()]);
-    $html .= html_writer::link($syncurl, get_string('syncnow', 'local_syncqueue'), ['class' => 'btn btn-primary mr-2']);
+    $html .= html_writer::link($syncurl, get_string('syncnow', 'local_syncqueue'), ['class' => 'btn btn-secondary mr-2']);
 
     $queueurl = new moodle_url('/local/syncqueue/queue.php');
-    $html .= html_writer::link($queueurl, get_string('viewqueue', 'local_syncqueue'), ['class' => 'btn btn-secondary']);
+    $html .= html_writer::link($queueurl, get_string('viewqueue', 'local_syncqueue'), ['class' => 'btn btn-outline-secondary']);
 
     $html .= html_writer::end_div();
     $html .= html_writer::end_div();
@@ -276,7 +300,10 @@ function render_central_dashboard(): string {
     $html .= html_writer::start_div('card-body');
 
     $schoolsurl = new moodle_url('/local/syncqueue/schools.php');
-    $html .= html_writer::link($schoolsurl, get_string('manageschools', 'local_syncqueue'), ['class' => 'btn btn-primary']);
+    $html .= html_writer::link($schoolsurl, get_string('manageschools', 'local_syncqueue'), ['class' => 'btn btn-primary mr-2']);
+
+    $coursesurl = new moodle_url('/local/syncqueue/courses.php');
+    $html .= html_writer::link($coursesurl, get_string('pushcourses', 'local_syncqueue'), ['class' => 'btn btn-secondary']);
 
     $html .= html_writer::end_div();
     $html .= html_writer::end_div();
