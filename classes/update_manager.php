@@ -89,10 +89,6 @@ class update_manager {
     public function get_updates_for_school(string $schoolid, int $since = 0, int $limit = 100): array {
         global $DB;
 
-        // Debug: Check total updates in table.
-        $totalupdates = $DB->count_records(self::TABLE);
-        debugging('Total updates in table: ' . $totalupdates, DEBUG_DEVELOPER);
-
         // Get updates that are either for this specific school or for all schools.
         // Exclude updates already downloaded by this school.
         $sql = "SELECT u.*
@@ -110,10 +106,7 @@ class update_manager {
             'since' => $since,
         ];
 
-        $results = $DB->get_records_sql($sql, $params, 0, $limit);
-        debugging('Query for schoolid=' . $schoolid . ', since=' . $since . ' returned ' . count($results) . ' updates', DEBUG_DEVELOPER);
-
-        return $results;
+        return $DB->get_records_sql($sql, $params, 0, $limit);
     }
 
     /**
