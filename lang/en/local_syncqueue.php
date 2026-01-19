@@ -203,6 +203,7 @@ $string['pushcourses'] = 'Push Courses';
 $string['selectcourses'] = 'Select courses to push to schools';
 $string['pushtoschools'] = 'Push to Schools';
 $string['coursespushed'] = '{$a} course(s) queued for sync to schools';
+$string['coursespushednobackup'] = '{$a} course(s) pushed without backup (metadata only)';
 $string['nocourses'] = 'No courses available to push';
 $string['downloadupdates'] = 'Download Updates';
 $string['updatessuccess'] = 'Downloaded and processed {$a->success} updates ({$a->failed} failed, {$a->skipped} skipped)';

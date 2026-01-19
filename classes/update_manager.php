@@ -149,19 +149,107 @@ class update_manager {
      * @param string $action create, update, or delete.
      */
     public function queue_course_update(stdClass $course, string $action = 'update'): void {
+        global $DB;
+
+        // Get full category path.
+        $categorypath = $this->get_category_path($course->category);
+
         $data = [
             'table' => 'course',
             'id' => $course->id,
             'shortname' => $course->shortname,
             'fullname' => $course->fullname,
-            'idnumber' => $course->idnumber,
+            'idnumber' => $course->idnumber ?? '',
             'summary' => $course->summary ?? '',
+            'summaryformat' => $course->summaryformat ?? FORMAT_HTML,
+            'format' => $course->format ?? 'topics',
+            'numsections' => $course->numsections ?? 10,
             'visible' => $course->visible,
             'startdate' => $course->startdate,
             'enddate' => $course->enddate,
+            'category' => [
+                'id' => $course->category,
+                'path' => $categorypath,
+            ],
         ];
 
         $this->queue_update('course', $action, $data, 2);
+    }
+
+    /**
+     * Queue a course update with backup file.
+     *
+     * @param stdClass $course Course object.
+     * @param string $backupfile Backup filename.
+     * @param string $action create, update, or delete.
+     */
+    public function queue_course_update_with_backup(stdClass $course, string $backupfile, string $action = 'create'): void {
+        global $CFG;
+
+        // Get full category path.
+        $categorypath = $this->get_category_path($course->category);
+
+        $data = [
+            'table' => 'course',
+            'id' => $course->id,
+            'shortname' => $course->shortname,
+            'fullname' => $course->fullname,
+            'idnumber' => $course->idnumber ?? '',
+            'summary' => $course->summary ?? '',
+            'summaryformat' => $course->summaryformat ?? FORMAT_HTML,
+            'format' => $course->format ?? 'topics',
+            'numsections' => $course->numsections ?? 10,
+            'visible' => $course->visible,
+            'startdate' => $course->startdate,
+            'enddate' => $course->enddate,
+            'category' => [
+                'id' => $course->category,
+                'path' => $categorypath,
+            ],
+            'backup' => [
+                'filename' => $backupfile,
+                'has_backup' => true,
+            ],
+        ];
+
+        $this->queue_update('course', $action, $data, 2);
+    }
+
+    /**
+     * Get category path as array of category names.
+     *
+     * @param int $categoryid Category ID.
+     * @return array Category path from root to leaf.
+     */
+    protected function get_category_path(int $categoryid): array {
+        $path = [];
+        $category = \core_course_category::get($categoryid, IGNORE_MISSING);
+
+        if (!$category) {
+            return $path;
+        }
+
+        // Build path from root to this category.
+        $parents = $category->get_parents();
+        foreach ($parents as $parentid) {
+            $parent = \core_course_category::get($parentid, IGNORE_MISSING);
+            if ($parent) {
+                $path[] = [
+                    'id' => $parent->id,
+                    'name' => $parent->name,
+                    'idnumber' => $parent->idnumber ?? '',
+                ];
+            }
+        }
+
+        // Add current category.
+        $path[] = [
+            'id' => $category->id,
+            'name' => $category->name,
+            'idnumber' => $category->idnumber ?? '',
+        ];
+
+        return $path;
     }
 
     /**

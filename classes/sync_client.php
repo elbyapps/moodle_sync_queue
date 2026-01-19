@@ -230,6 +230,49 @@ class sync_client {
     }
 
     /**
+     * Download a backup file from central server.
+     *
+     * @param string $filename Backup filename.
+     * @param string $destpath Destination path to save the file.
+     * @return bool True on success.
+     */
+    public function download_backup(string $filename, string $destpath): bool {
+        $url = rtrim($this->serverurl, '/') . '/local/syncqueue/backup_download.php';
+
+        $params = [
+            'schoolid' => $this->schoolid,
+            'apikey' => $this->apikey,
+            'file' => $filename,
+        ];
+
+        $curl = new \curl();
+        $curl->setopt([
+            'CURLOPT_TIMEOUT' => 600, // 10 minutes for large files.
+            'CURLOPT_CONNECTTIMEOUT' => 30,
+        ]);
+
+        // Download to file.
+        $fp = fopen($destpath, 'wb');
+        if (!$fp) {
+            return false;
+        }
+
+        $curl->setopt(['CURLOPT_FILE' => $fp]);
+        $curl->get($url, $params);
+        fclose($fp);
+
+        $info = $curl->get_info();
+        $errno = $curl->get_errno();
+
+        if ($errno || ($info['http_code'] ?? 0) !== 200) {
+            @unlink($destpath);
+            return false;
+        }
+
+        return file_exists($destpath) && filesize($destpath) > 0;
+    }
+
+    /**
      * Make an HTTP request to the central server.
      *
      * @param string $method HTTP method.

@@ -49,17 +49,33 @@ if ($mode !== 'central') {
 // Handle push action.
 if ($action === 'push' && confirm_sesskey() && !empty($courseids)) {
     $updatemanager = new \local_syncqueue\update_manager();
+    $backupmanager = new \local_syncqueue\backup_manager();
     $count = 0;
+    $failed = 0;
 
     foreach ($courseids as $courseid) {
         $course = $DB->get_record('course', ['id' => $courseid]);
         if ($course && $course->id != SITEID) {
-            $updatemanager->queue_course_update($course, 'create');
-            $count++;
+            // Create backup of the course.
+            $backupfile = $backupmanager->create_course_backup($courseid, $USER->id);
+
+            if ($backupfile) {
+                $updatemanager->queue_course_update_with_backup($course, $backupfile, 'create');
+                $count++;
+            } else {
+                // Queue without backup (metadata only).
+                $updatemanager->queue_course_update($course, 'create');
+                $failed++;
+            }
         }
     }
 
-    \core\notification::success(get_string('coursespushed', 'local_syncqueue', $count));
+    if ($count > 0) {
+        \core\notification::success(get_string('coursespushed', 'local_syncqueue', $count));
+    }
+    if ($failed > 0) {
+        \core\notification::warning(get_string('coursespushednobackup', 'local_syncqueue', $failed));
+    }
     redirect($PAGE->url);
 }
 

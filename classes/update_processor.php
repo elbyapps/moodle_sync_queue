@@ -141,7 +141,81 @@ class update_processor {
         }
 
         // Course doesn't exist locally - create it.
+        // Check if we have a backup to restore.
+        if (!empty($data['backup']) && !empty($data['backup']['has_backup'])) {
+            return $this->restore_course_from_backup($data, $centralid);
+        }
+
         return $this->create_course_from_central($data, $centralid);
+    }
+
+    /**
+     * Restore a course from a backup file.
+     *
+     * @param array $data Course data with backup info.
+     * @param int $centralid Central course ID.
+     * @return bool Success.
+     */
+    protected function restore_course_from_backup(array $data, int $centralid): bool {
+        global $CFG, $USER;
+
+        $backupinfo = $data['backup'];
+        $filename = $backupinfo['filename'];
+
+        // Get or create the category.
+        $categoryid = $this->get_or_create_category_from_path($data['category'] ?? null);
+
+        // Download the backup file.
+        $tempdir = make_temp_directory('syncqueue_restore');
+        $backuppath = $tempdir . '/' . $filename;
+
+        try {
+            $client = new sync_client();
+            $downloaded = $client->download_backup($filename, $backuppath);
+
+            if (!$downloaded) {
+                debugging('Failed to download backup file: ' . $filename, DEBUG_DEVELOPER);
+                // Fall back to metadata-only creation.
+                return $this->create_course_from_central($data, $centralid);
+            }
+
+            // Restore the course.
+            $backupmanager = new backup_manager();
+            $userid = $USER->id ?: get_admin()->id;
+
+            $newcourseid = $backupmanager->restore_course($backuppath, $categoryid, $userid);
+
+            // Clean up temp file.
+            @unlink($backuppath);
+
+            if (!$newcourseid) {
+                debugging('Failed to restore course from backup', DEBUG_DEVELOPER);
+                // Fall back to metadata-only creation.
+                return $this->create_course_from_central($data, $centralid);
+            }
+
+            // Update course with correct metadata.
+            global $DB;
+            $course = $DB->get_record('course', ['id' => $newcourseid]);
+            if ($course) {
+                $course->shortname = $this->ensure_unique_shortname($data['shortname'], $newcourseid);
+                $course->fullname = $data['fullname'];
+                $course->idnumber = $data['idnumber'] ?? 'central_' . $centralid;
+                $course->visible = $data['visible'] ?? 1;
+                $DB->update_record('course', $course);
+            }
+
+            // Save mapping.
+            $this->mapper->set_mapping('course', $newcourseid, $centralid);
+
+            return true;
+
+        } catch (\Exception $e) {
+            debugging('Restore failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            @unlink($backuppath);
+            // Fall back to metadata-only creation.
+            return $this->create_course_from_central($data, $centralid);
+        }
     }
 
     /**
@@ -155,8 +229,8 @@ class update_processor {
         global $DB, $CFG;
         require_once($CFG->dirroot . '/course/lib.php');
 
-        // Get or create the sync category.
-        $categoryid = $this->get_sync_category();
+        // Get or create the category (matching central's structure).
+        $categoryid = $this->get_or_create_category_from_path($data['category'] ?? null);
 
         // Prepare course data.
         $coursedata = new stdClass();
@@ -164,13 +238,13 @@ class update_processor {
         $coursedata->shortname = $this->ensure_unique_shortname($data['shortname']);
         $coursedata->category = $categoryid;
         $coursedata->summary = $data['summary'] ?? '';
-        $coursedata->summaryformat = FORMAT_HTML;
-        $coursedata->format = 'topics';
+        $coursedata->summaryformat = $data['summaryformat'] ?? FORMAT_HTML;
+        $coursedata->format = $data['format'] ?? 'topics';
         $coursedata->visible = $data['visible'] ?? 1;
         $coursedata->startdate = $data['startdate'] ?? time();
         $coursedata->enddate = $data['enddate'] ?? 0;
         $coursedata->idnumber = $data['idnumber'] ?? 'central_' . $centralid;
-        $coursedata->numsections = 10;
+        $coursedata->numsections = $data['numsections'] ?? 10;
 
         try {
             $newcourse = create_course($coursedata);
@@ -183,6 +257,60 @@ class update_processor {
             debugging('Failed to create course: ' . $e->getMessage(), DEBUG_DEVELOPER);
             return false;
         }
+    }
+
+    /**
+     * Get or create category from a category path.
+     *
+     * @param array|null $categorydata Category data with path.
+     * @return int Category ID.
+     */
+    protected function get_or_create_category_from_path(?array $categorydata): int {
+        global $DB;
+
+        // If no category data, use default sync category.
+        if (empty($categorydata) || empty($categorydata['path'])) {
+            return $this->get_sync_category();
+        }
+
+        $path = $categorydata['path'];
+        $parentid = 0;
+        $lastcategoryid = 0;
+
+        foreach ($path as $catinfo) {
+            $name = $catinfo['name'];
+            $idnumber = $catinfo['idnumber'] ?? '';
+
+            // Try to find existing category by idnumber first, then by name+parent.
+            $category = null;
+            if (!empty($idnumber)) {
+                $category = $DB->get_record('course_categories', ['idnumber' => $idnumber]);
+            }
+            if (!$category) {
+                $category = $DB->get_record('course_categories', [
+                    'name' => $name,
+                    'parent' => $parentid,
+                ]);
+            }
+
+            if ($category) {
+                $lastcategoryid = $category->id;
+                $parentid = $category->id;
+            } else {
+                // Create the category.
+                $newcatdata = new stdClass();
+                $newcatdata->name = $name;
+                $newcatdata->idnumber = $idnumber ?: null;
+                $newcatdata->parent = $parentid;
+                $newcatdata->description = '';
+
+                $newcategory = \core_course_category::create($newcatdata);
+                $lastcategoryid = $newcategory->id;
+                $parentid = $newcategory->id;
+            }
+        }
+
+        return $lastcategoryid ?: $this->get_sync_category();
     }
 
     /**
