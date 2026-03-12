@@ -103,7 +103,10 @@ if ($search !== '') {
     $params['search3'] = '%' . $DB->sql_like_escape($search) . '%';
 }
 
-$countsql = "SELECT COUNT(*) FROM {course} c WHERE c.id != :siteid" . $searchsql;
+$countsql = "SELECT COUNT(*)
+               FROM {course} c
+          LEFT JOIN {course_categories} cc ON cc.id = c.category
+              WHERE c.id != :siteid" . $searchsql;
 $totalcount = $DB->count_records_sql($countsql, $params);
 
 $sql = "SELECT c.id, c.shortname, c.fullname, c.visible, c.category, cc.name AS categoryname
