@@ -96,9 +96,11 @@ $params = ['siteid' => SITEID];
 $searchsql = '';
 if ($search !== '') {
     $searchsql = ' AND (' . $DB->sql_like('c.fullname', ':search1', false) .
-                 ' OR ' . $DB->sql_like('c.shortname', ':search2', false) . ')';
+                 ' OR ' . $DB->sql_like('c.shortname', ':search2', false) .
+                 ' OR ' . $DB->sql_like('cc.name', ':search3', false) . ')';
     $params['search1'] = '%' . $DB->sql_like_escape($search) . '%';
     $params['search2'] = '%' . $DB->sql_like_escape($search) . '%';
+    $params['search3'] = '%' . $DB->sql_like_escape($search) . '%';
 }
 
 $countsql = "SELECT COUNT(*) FROM {course} c WHERE c.id != :siteid" . $searchsql;
@@ -110,6 +112,9 @@ $sql = "SELECT c.id, c.shortname, c.fullname, c.visible, c.category, cc.name AS 
          WHERE c.id != :siteid" . $searchsql . "
       ORDER BY c.fullname ASC";
 $courses = $DB->get_records_sql($sql, $params, $page * $perpage, $perpage);
+
+// Build full category path map (e.g. "Level 3 / Building Construction").
+$categorylist = \core_course_category::make_categories_list('', 0, ' / ');
 
 // Search form.
 echo html_writer::start_tag('form', [
@@ -161,7 +166,7 @@ if ($totalcount === 0) {
     $table->attributes['class'] = 'generaltable';
 
     foreach ($courses as $course) {
-        $categoryname = $course->categoryname ?: '-';
+        $categoryname = $categorylist[$course->category] ?? ($course->categoryname ?: '-');
 
         $checkbox = html_writer::checkbox('courses[]', $course->id, false, '', ['class' => 'course-checkbox']);
         $visible = $course->visible ? get_string('yes') : get_string('no');
