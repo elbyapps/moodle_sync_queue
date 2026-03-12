@@ -204,6 +204,16 @@ class queue_manager {
             case 'assign_submission':
                 $submission = $DB->get_record('assign_submission', ['id' => $id]);
                 if ($submission) {
+                    $assign = $DB->get_record('assign', ['id' => $submission->assignment]);
+                    $cmidnumber = null;
+                    if ($assign) {
+                        $moduleid = $DB->get_field('modules', 'id', ['name' => 'assign']);
+                        $cm = $DB->get_record('course_modules', [
+                            'module' => $moduleid,
+                            'instance' => $assign->id,
+                        ], 'idnumber');
+                        $cmidnumber = $cm->idnumber ?? null;
+                    }
                     return [
                         'table' => $table,
                         'localid' => $id,
@@ -211,6 +221,8 @@ class queue_manager {
                         'userid' => $submission->userid,
                         'status' => $submission->status,
                         'timemodified' => $submission->timemodified,
+                        'assignname' => $assign->name ?? null,
+                        'assignidnumber' => $cmidnumber,
                     ];
                 }
                 break;
@@ -218,6 +230,16 @@ class queue_manager {
             case 'quiz_attempts':
                 $attempt = $DB->get_record('quiz_attempts', ['id' => $id]);
                 if ($attempt) {
+                    $quiz = $DB->get_record('quiz', ['id' => $attempt->quiz]);
+                    $cmidnumber = null;
+                    if ($quiz) {
+                        $moduleid = $DB->get_field('modules', 'id', ['name' => 'quiz']);
+                        $cm = $DB->get_record('course_modules', [
+                            'module' => $moduleid,
+                            'instance' => $quiz->id,
+                        ], 'idnumber');
+                        $cmidnumber = $cm->idnumber ?? null;
+                    }
                     return [
                         'table' => $table,
                         'localid' => $id,
@@ -227,6 +249,8 @@ class queue_manager {
                         'state' => $attempt->state,
                         'sumgrades' => $attempt->sumgrades,
                         'timefinish' => $attempt->timefinish,
+                        'quizname' => $quiz->name ?? null,
+                        'quizidnumber' => $cmidnumber,
                     ];
                 }
                 break;
@@ -266,6 +290,10 @@ class queue_manager {
                 $completion = $DB->get_record('course_modules_completion', ['id' => $id]);
                 if ($completion) {
                     $cm = $DB->get_record('course_modules', ['id' => $completion->coursemoduleid]);
+                    $modulename = null;
+                    if ($cm) {
+                        $modulename = $DB->get_field('modules', 'name', ['id' => $cm->module]);
+                    }
                     return [
                         'table' => $table,
                         'localid' => $id,
@@ -275,6 +303,8 @@ class queue_manager {
                         'coursemodule' => $cm ? [
                             'module' => $cm->module,
                             'instance' => $cm->instance,
+                            'modulename' => $modulename,
+                            'cmidnumber' => $cm->idnumber ?? null,
                         ] : null,
                     ];
                 }

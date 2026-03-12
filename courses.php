@@ -30,8 +30,15 @@ admin_externalpage_setup('local_syncqueue_courses');
 
 $action = optional_param('action', '', PARAM_ALPHA);
 $courseids = optional_param_array('courses', [], PARAM_INT);
+$search = optional_param('search', '', PARAM_TEXT);
+$page = optional_param('page', 0, PARAM_INT);
+$perpage = 20;
 
-$PAGE->set_url(new moodle_url('/local/syncqueue/courses.php'));
+$pageurl = new moodle_url('/local/syncqueue/courses.php');
+if ($search !== '') {
+    $pageurl->param('search', $search);
+}
+$PAGE->set_url($pageurl);
 $PAGE->set_title(get_string('pushcourses', 'local_syncqueue'));
 $PAGE->set_heading(get_string('pushcourses', 'local_syncqueue'));
 
@@ -84,17 +91,55 @@ echo $OUTPUT->header();
 echo local_syncqueue_get_navigation('courses');
 echo $OUTPUT->heading(get_string('pushcourses', 'local_syncqueue'));
 
-// Get all courses except site course.
-$courses = $DB->get_records_select(
-    'course',
-    'id != :siteid',
-    ['siteid' => SITEID],
-    'fullname ASC',
-    'id, shortname, fullname, visible, category'
-);
+// Build search query.
+$params = ['siteid' => SITEID];
+$searchsql = '';
+if ($search !== '') {
+    $searchsql = ' AND (' . $DB->sql_like('c.fullname', ':search1', false) .
+                 ' OR ' . $DB->sql_like('c.shortname', ':search2', false) . ')';
+    $params['search1'] = '%' . $DB->sql_like_escape($search) . '%';
+    $params['search2'] = '%' . $DB->sql_like_escape($search) . '%';
+}
 
-if (empty($courses)) {
-    echo $OUTPUT->notification(get_string('nocourses', 'local_syncqueue'), 'info');
+$countsql = "SELECT COUNT(*) FROM {course} c WHERE c.id != :siteid" . $searchsql;
+$totalcount = $DB->count_records_sql($countsql, $params);
+
+$sql = "SELECT c.id, c.shortname, c.fullname, c.visible, c.category, cc.name AS categoryname
+          FROM {course} c
+     LEFT JOIN {course_categories} cc ON cc.id = c.category
+         WHERE c.id != :siteid" . $searchsql . "
+      ORDER BY c.fullname ASC";
+$courses = $DB->get_records_sql($sql, $params, $page * $perpage, $perpage);
+
+// Search form.
+echo html_writer::start_tag('form', [
+    'method' => 'get',
+    'action' => (new moodle_url('/local/syncqueue/courses.php'))->out_omit_querystring(),
+    'class' => 'mb-3',
+]);
+echo html_writer::start_div('input-group', ['style' => 'max-width: 400px;']);
+echo html_writer::empty_tag('input', [
+    'type' => 'text',
+    'name' => 'search',
+    'value' => $search,
+    'placeholder' => get_string('searchcourses', 'local_syncqueue'),
+    'class' => 'form-control',
+]);
+echo html_writer::start_div('input-group-append');
+echo html_writer::tag('button', get_string('search'), [
+    'type' => 'submit',
+    'class' => 'btn btn-outline-secondary',
+]);
+echo html_writer::end_div();
+echo html_writer::end_div();
+echo html_writer::end_tag('form');
+
+if ($totalcount === 0) {
+    if ($search !== '') {
+        echo $OUTPUT->notification(get_string('nocoursesmatchsearch', 'local_syncqueue'), 'info');
+    } else {
+        echo $OUTPUT->notification(get_string('nocourses', 'local_syncqueue'), 'info');
+    }
 } else {
     echo html_writer::tag('p', get_string('selectcourses', 'local_syncqueue'));
 
@@ -116,8 +161,7 @@ if (empty($courses)) {
     $table->attributes['class'] = 'generaltable';
 
     foreach ($courses as $course) {
-        $category = $DB->get_record('course_categories', ['id' => $course->category]);
-        $categoryname = $category ? $category->name : '-';
+        $categoryname = $course->categoryname ?: '-';
 
         $checkbox = html_writer::checkbox('courses[]', $course->id, false, '', ['class' => 'course-checkbox']);
         $visible = $course->visible ? get_string('yes') : get_string('no');
@@ -132,6 +176,8 @@ if (empty($courses)) {
     }
 
     echo html_writer::table($table);
+
+    echo $OUTPUT->paging_bar($totalcount, $page, $perpage, $PAGE->url);
 
     echo html_writer::empty_tag('input', [
         'type' => 'submit',

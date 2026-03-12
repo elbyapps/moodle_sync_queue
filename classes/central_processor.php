@@ -174,12 +174,77 @@ class central_processor {
      * @return array Result.
      */
     protected function process_submission(string $schoolid, array $payload): array {
-        // TODO: Implement submission processing.
-        // This requires handling file uploads separately.
+        global $DB;
+
+        $context = $payload['context'] ?? [];
+        $object = $context['object'] ?? [];
+
+        if (empty($object)) {
+            return ['status' => 'error', 'message' => 'Missing submission data'];
+        }
+
+        $user = $this->find_user($context['user'] ?? []);
+        if (!$user) {
+            return ['status' => 'error', 'message' => 'User not found on central'];
+        }
+
+        $course = $this->find_course($context['course'] ?? []);
+        if (!$course) {
+            return ['status' => 'error', 'message' => 'Course not found on central'];
+        }
+
+        // Find assignment on central.
+        $assign = $this->find_activity_instance(
+            $course->id, 'assign', (int) $object['assignment'], $schoolid,
+            $object['assignname'] ?? null, $object['assignidnumber'] ?? null
+        );
+        if (!$assign) {
+            return ['status' => 'error', 'message' => 'Assignment not found on central'];
+        }
+
+        // Check for existing submission.
+        $existing = $DB->get_record('assign_submission', [
+            'assignment' => $assign->id,
+            'userid' => $user->id,
+        ]);
+
+        if ($existing) {
+            $schooltime = $object['timemodified'] ?? 0;
+            if ($existing->timemodified > $schooltime) {
+                return [
+                    'status' => 'conflict',
+                    'message' => 'Central submission is newer',
+                    'centralid' => $existing->id,
+                ];
+            }
+
+            $existing->status = $object['status'] ?? $existing->status;
+            $existing->timemodified = time();
+            $DB->update_record('assign_submission', $existing);
+
+            return [
+                'status' => 'success',
+                'message' => 'Submission updated',
+                'centralid' => $existing->id,
+            ];
+        }
+
+        // Create new submission.
+        $submission = new stdClass();
+        $submission->assignment = $assign->id;
+        $submission->userid = $user->id;
+        $submission->status = $object['status'] ?? 'submitted';
+        $submission->timecreated = time();
+        $submission->timemodified = time();
+
+        $centralid = $DB->insert_record('assign_submission', $submission);
+
+        $this->mapper->set_mapping('assign_submission', $object['localid'], $centralid);
+
         return [
             'status' => 'success',
-            'message' => 'Submission logged (file sync pending)',
-            'centralid' => 0,
+            'message' => 'Submission created',
+            'centralid' => $centralid,
         ];
     }
 
@@ -191,12 +256,88 @@ class central_processor {
      * @return array Result.
      */
     protected function process_quiz_attempt(string $schoolid, array $payload): array {
-        // TODO: Implement quiz attempt processing.
-        // Quiz attempts are complex due to question responses.
+        global $DB;
+
+        $context = $payload['context'] ?? [];
+        $object = $context['object'] ?? [];
+
+        if (empty($object)) {
+            return ['status' => 'error', 'message' => 'Missing quiz attempt data'];
+        }
+
+        $user = $this->find_user($context['user'] ?? []);
+        if (!$user) {
+            return ['status' => 'error', 'message' => 'User not found on central'];
+        }
+
+        $course = $this->find_course($context['course'] ?? []);
+        if (!$course) {
+            return ['status' => 'error', 'message' => 'Course not found on central'];
+        }
+
+        // Find quiz on central.
+        $quiz = $this->find_activity_instance(
+            $course->id, 'quiz', (int) $object['quiz'], $schoolid,
+            $object['quizname'] ?? null, $object['quizidnumber'] ?? null
+        );
+        if (!$quiz) {
+            return ['status' => 'error', 'message' => 'Quiz not found on central'];
+        }
+
+        $attemptnum = (int) ($object['attempt'] ?? 1);
+
+        // Check for existing attempt.
+        $existing = $DB->get_record('quiz_attempts', [
+            'quiz' => $quiz->id,
+            'userid' => $user->id,
+            'attempt' => $attemptnum,
+        ]);
+
+        if ($existing) {
+            $schooltime = $object['timefinish'] ?? 0;
+            if ($existing->timefinish > $schooltime && $existing->state === 'finished') {
+                return [
+                    'status' => 'conflict',
+                    'message' => 'Central quiz attempt is newer',
+                    'centralid' => $existing->id,
+                ];
+            }
+
+            $existing->state = $object['state'] ?? $existing->state;
+            $existing->sumgrades = $object['sumgrades'] ?? $existing->sumgrades;
+            $existing->timefinish = $object['timefinish'] ?? $existing->timefinish;
+            $existing->timemodified = time();
+            $DB->update_record('quiz_attempts', $existing);
+
+            return [
+                'status' => 'success',
+                'message' => 'Quiz attempt updated',
+                'centralid' => $existing->id,
+            ];
+        }
+
+        // Create new quiz attempt (summary only, not individual question responses).
+        $attempt = new stdClass();
+        $attempt->quiz = $quiz->id;
+        $attempt->userid = $user->id;
+        $attempt->attempt = $attemptnum;
+        $attempt->state = $object['state'] ?? 'finished';
+        $attempt->sumgrades = $object['sumgrades'] ?? null;
+        $attempt->timestart = $payload['event']['timecreated'] ?? time();
+        $attempt->timefinish = $object['timefinish'] ?? 0;
+        $attempt->timemodified = time();
+        $attempt->layout = '';
+        // Generate a unique usage ID for the question engine.
+        $attempt->uniqueid = $DB->get_field_sql('SELECT MAX(id) + 1 FROM {question_usages}') ?: 1;
+
+        $centralid = $DB->insert_record('quiz_attempts', $attempt);
+
+        $this->mapper->set_mapping('quiz_attempts', $object['localid'], $centralid);
+
         return [
             'status' => 'success',
-            'message' => 'Quiz attempt logged',
-            'centralid' => 0,
+            'message' => 'Quiz attempt created',
+            'centralid' => $centralid,
         ];
     }
 
@@ -224,11 +365,156 @@ class central_processor {
      * @return array Result.
      */
     protected function process_completion(string $schoolid, array $payload): array {
-        // TODO: Implement completion processing.
+        global $DB;
+
+        $context = $payload['context'] ?? [];
+        $object = $context['object'] ?? [];
+
+        if (empty($object)) {
+            return ['status' => 'error', 'message' => 'Missing completion data'];
+        }
+
+        $user = $this->find_user($context['user'] ?? []);
+        if (!$user) {
+            return ['status' => 'error', 'message' => 'User not found on central'];
+        }
+
+        $course = $this->find_course($context['course'] ?? []);
+        if (!$course) {
+            return ['status' => 'error', 'message' => 'Course not found on central'];
+        }
+
+        // Handle course_completions (course-level completion).
+        $eventtable = $object['table'] ?? '';
+        if ($eventtable === 'course_completions') {
+            return $this->process_course_completion($user, $course, $object);
+        }
+
+        // Handle course_modules_completion (activity-level completion).
+        $cmdata = $object['coursemodule'] ?? [];
+        if (empty($cmdata)) {
+            return ['status' => 'error', 'message' => 'Missing course module data'];
+        }
+
+        // Find the course module on central.
+        $modulename = $cmdata['modulename'] ?? null;
+        $instanceid = (int) ($cmdata['instance'] ?? 0);
+
+        if (empty($modulename)) {
+            // Fall back to looking up module name from type ID.
+            $moduleid = (int) ($cmdata['module'] ?? 0);
+            if ($moduleid) {
+                $modulename = $DB->get_field('modules', 'name', ['id' => $moduleid]);
+            }
+        }
+
+        if (empty($modulename) || empty($instanceid)) {
+            return ['status' => 'error', 'message' => 'Cannot identify course module'];
+        }
+
+        $centralcm = $this->find_course_module(
+            $course->id, $modulename, $instanceid, $schoolid,
+            $cmdata['cmidnumber'] ?? null
+        );
+        if (!$centralcm) {
+            return ['status' => 'error', 'message' => 'Course module not found on central'];
+        }
+
+        // Check for existing completion.
+        $existing = $DB->get_record('course_modules_completion', [
+            'coursemoduleid' => $centralcm->id,
+            'userid' => $user->id,
+        ]);
+
+        if ($existing) {
+            $schooltime = $object['timemodified'] ?? 0;
+            if ($existing->timemodified > $schooltime) {
+                return [
+                    'status' => 'conflict',
+                    'message' => 'Central completion is newer',
+                    'centralid' => $existing->id,
+                ];
+            }
+
+            $existing->completionstate = $object['completionstate'] ?? $existing->completionstate;
+            $existing->timemodified = time();
+            $DB->update_record('course_modules_completion', $existing);
+
+            return [
+                'status' => 'success',
+                'message' => 'Completion updated',
+                'centralid' => $existing->id,
+            ];
+        }
+
+        // Create new completion record.
+        $completion = new stdClass();
+        $completion->coursemoduleid = $centralcm->id;
+        $completion->userid = $user->id;
+        $completion->completionstate = $object['completionstate'] ?? 1;
+        $completion->timemodified = time();
+
+        $centralid = $DB->insert_record('course_modules_completion', $completion);
+
+        $this->mapper->set_mapping('course_modules_completion', $object['localid'], $centralid);
+
         return [
             'status' => 'success',
-            'message' => 'Completion logged',
-            'centralid' => 0,
+            'message' => 'Completion created',
+            'centralid' => $centralid,
+        ];
+    }
+
+    /**
+     * Process a course-level completion record.
+     *
+     * @param stdClass $user The central user.
+     * @param stdClass $course The central course.
+     * @param array $object Completion object data.
+     * @return array Result.
+     */
+    protected function process_course_completion(stdClass $user, stdClass $course, array $object): array {
+        global $DB;
+
+        $existing = $DB->get_record('course_completions', [
+            'userid' => $user->id,
+            'course' => $course->id,
+        ]);
+
+        if ($existing) {
+            $schooltime = $object['timemodified'] ?? $object['timecompleted'] ?? 0;
+            if (($existing->timecompleted ?? 0) > $schooltime) {
+                return [
+                    'status' => 'conflict',
+                    'message' => 'Central course completion is newer',
+                    'centralid' => $existing->id,
+                ];
+            }
+
+            $existing->timecompleted = $object['timecompleted'] ?? time();
+            $existing->timemodified = time();
+            $DB->update_record('course_completions', $existing);
+
+            return [
+                'status' => 'success',
+                'message' => 'Course completion updated',
+                'centralid' => $existing->id,
+            ];
+        }
+
+        $record = new stdClass();
+        $record->userid = $user->id;
+        $record->course = $course->id;
+        $record->timecompleted = $object['timecompleted'] ?? time();
+        $record->timestarted = $object['timestarted'] ?? time();
+        $record->timeenrolled = $object['timeenrolled'] ?? time();
+
+        $centralid = $DB->insert_record('course_completions', $record);
+
+        return [
+            'status' => 'success',
+            'message' => 'Course completion created',
+            'centralid' => $centralid,
         ];
     }
 
@@ -333,6 +619,130 @@ class central_processor {
             if ($course) {
                 return $course;
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Find an activity instance on central by id_mapper lookup, idnumber, name, or sole-instance fallback.
+     *
+     * @param int $courseid Central course ID.
+     * @param string $modulename Module type name (e.g. 'assign', 'quiz').
+     * @param int $schoolinstanceid Instance ID on the school.
+     * @param string $schoolid School identifier.
+     * @param string|null $name Activity name for fallback matching.
+     * @param string|null $idnumber Activity CM idnumber for fallback matching.
+     * @return stdClass|null The activity instance record on central.
+     */
+    protected function find_activity_instance(
+        int $courseid, string $modulename, int $schoolinstanceid,
+        string $schoolid, ?string $name = null, ?string $idnumber = null
+    ): ?stdClass {
+        global $DB;
+
+        // 1. Try id_mapper lookup.
+        $centralid = $this->mapper->get_central_id($modulename, $schoolinstanceid);
+        if ($centralid) {
+            $instance = $DB->get_record($modulename, ['id' => $centralid, 'course' => $courseid]);
+            if ($instance) {
+                return $instance;
+            }
+        }
+
+        // 2. Try matching by CM idnumber.
+        if (!empty($idnumber)) {
+            $moduleid = $DB->get_field('modules', 'id', ['name' => $modulename]);
+            if ($moduleid) {
+                $cm = $DB->get_record('course_modules', [
+                    'course' => $courseid,
+                    'module' => $moduleid,
+                    'idnumber' => $idnumber,
+                ]);
+                if ($cm) {
+                    $instance = $DB->get_record($modulename, ['id' => $cm->instance, 'course' => $courseid]);
+                    if ($instance) {
+                        $this->mapper->set_mapping($modulename, $schoolinstanceid, $instance->id);
+                        return $instance;
+                    }
+                }
+            }
+        }
+
+        // 3. Try matching by name.
+        if (!empty($name)) {
+            $instances = $DB->get_records($modulename, ['course' => $courseid, 'name' => $name]);
+            if (count($instances) === 1) {
+                $instance = reset($instances);
+                $this->mapper->set_mapping($modulename, $schoolinstanceid, $instance->id);
+                return $instance;
+            }
+        }
+
+        // 4. Sole-instance fallback: if only one instance of this module type in the course.
+        $instances = $DB->get_records($modulename, ['course' => $courseid]);
+        if (count($instances) === 1) {
+            $instance = reset($instances);
+            $this->mapper->set_mapping($modulename, $schoolinstanceid, $instance->id);
+            return $instance;
+        }
+
+        return null;
+    }
+
+    /**
+     * Find a course module on central by module type and instance.
+     *
+     * @param int $courseid Central course ID.
+     * @param string $modulename Module type name (e.g. 'assign', 'quiz', 'forum').
+     * @param int $schoolinstanceid Instance ID on the school.
+     * @param string $schoolid School identifier.
+     * @param string|null $cmidnumber CM idnumber for matching.
+     * @return stdClass|null The course_modules record on central.
+     */
+    protected function find_course_module(
+        int $courseid, string $modulename, int $schoolinstanceid,
+        string $schoolid, ?string $cmidnumber = null
+    ): ?stdClass {
+        global $DB;
+
+        $moduleid = $DB->get_field('modules', 'id', ['name' => $modulename]);
+        if (!$moduleid) {
+            return null;
+        }
+
+        // Try CM idnumber match first.
+        if (!empty($cmidnumber)) {
+            $cm = $DB->get_record('course_modules', [
+                'course' => $courseid,
+                'module' => $moduleid,
+                'idnumber' => $cmidnumber,
+            ]);
+            if ($cm) {
+                return $cm;
+            }
+        }
+
+        // Find the activity instance on central, then get its CM.
+        $instance = $this->find_activity_instance($courseid, $modulename, $schoolinstanceid, $schoolid);
+        if ($instance) {
+            $cm = $DB->get_record('course_modules', [
+                'course' => $courseid,
+                'module' => $moduleid,
+                'instance' => $instance->id,
+            ]);
+            if ($cm) {
+                return $cm;
+            }
+        }
+
+        // Sole-CM fallback: if only one CM of this module type in the course.
+        $cms = $DB->get_records('course_modules', [
+            'course' => $courseid,
+            'module' => $moduleid,
+        ]);
+        if (count($cms) === 1) {
+            return reset($cms);
         }
 
         return null;
