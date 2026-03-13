@@ -460,9 +460,17 @@ class update_processor {
 
         $data = is_string($update['data']) ? json_decode($update['data'], true) : $update['data'];
 
+        // DEBUG: Log the incoming enrolment data.
+        error_log('[SYNCQUEUE ENROL DEBUG] Raw data: ' . json_encode($data));
+        error_log('[SYNCQUEUE ENROL DEBUG] userid=' . ($data['userid'] ?? 'NULL') . ' courseid=' . ($data['courseid'] ?? 'NULL'));
+        error_log('[SYNCQUEUE ENROL DEBUG] user info: ' . json_encode($data['user'] ?? 'MISSING'));
+        error_log('[SYNCQUEUE ENROL DEBUG] course info: ' . json_encode($data['course'] ?? 'MISSING'));
+
         // Get local IDs.
         $localuserid = $this->mapper->get_local_id('user', $data['userid']);
         $localcourseid = $this->mapper->get_local_id('course', $data['courseid']);
+
+        error_log('[SYNCQUEUE ENROL DEBUG] Mapper results: localuserid=' . ($localuserid ?? 'NULL') . ' localcourseid=' . ($localcourseid ?? 'NULL'));
 
         // Fallback: look up user by email/username.
         if (!$localuserid && !empty($data['user'])) {
@@ -470,9 +478,11 @@ class update_processor {
             $localuser = null;
             if (!empty($userinfo['email'])) {
                 $localuser = $DB->get_record('user', ['email' => $userinfo['email']]);
+                error_log('[SYNCQUEUE ENROL DEBUG] User fallback by email "' . $userinfo['email'] . '": ' . ($localuser ? 'found id=' . $localuser->id : 'NOT FOUND'));
             }
             if (!$localuser && !empty($userinfo['username'])) {
                 $localuser = $DB->get_record('user', ['username' => $userinfo['username']]);
+                error_log('[SYNCQUEUE ENROL DEBUG] User fallback by username "' . $userinfo['username'] . '": ' . ($localuser ? 'found id=' . $localuser->id : 'NOT FOUND'));
             }
             if ($localuser) {
                 $localuserid = $localuser->id;
@@ -486,12 +496,16 @@ class update_processor {
             $localcourse = null;
             if (!empty($courseinfo['idnumber'])) {
                 $localcourse = $DB->get_record('course', ['idnumber' => $courseinfo['idnumber']]);
+                error_log('[SYNCQUEUE ENROL DEBUG] Course fallback by idnumber "' . $courseinfo['idnumber'] . '": ' . ($localcourse ? 'found id=' . $localcourse->id : 'NOT FOUND'));
             }
             if (!$localcourse) {
-                $localcourse = $DB->get_record('course', ['idnumber' => 'central_' . $data['courseid']]);
+                $centralidnumber = 'central_' . $data['courseid'];
+                $localcourse = $DB->get_record('course', ['idnumber' => $centralidnumber]);
+                error_log('[SYNCQUEUE ENROL DEBUG] Course fallback by central idnumber "' . $centralidnumber . '": ' . ($localcourse ? 'found id=' . $localcourse->id : 'NOT FOUND'));
             }
             if (!$localcourse && !empty($courseinfo['shortname'])) {
                 $localcourse = $DB->get_record('course', ['shortname' => $courseinfo['shortname']]);
+                error_log('[SYNCQUEUE ENROL DEBUG] Course fallback by shortname "' . $courseinfo['shortname'] . '": ' . ($localcourse ? 'found id=' . $localcourse->id : 'NOT FOUND'));
             }
             if ($localcourse) {
                 $localcourseid = $localcourse->id;
@@ -499,7 +513,10 @@ class update_processor {
             }
         }
 
+        error_log('[SYNCQUEUE ENROL DEBUG] Final: localuserid=' . ($localuserid ?? 'NULL') . ' localcourseid=' . ($localcourseid ?? 'NULL'));
+
         if (!$localuserid || !$localcourseid) {
+            error_log('[SYNCQUEUE ENROL DEBUG] SKIPPING enrolment - missing ' . (!$localuserid ? 'user' : '') . (!$localcourseid ? ' course' : ''));
             return false; // Can't enrol without both.
         }
 
