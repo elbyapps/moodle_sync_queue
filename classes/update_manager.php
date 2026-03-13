@@ -65,12 +65,48 @@ class update_manager {
     ): int {
         global $DB;
 
+        $objecttable = $data['table'] ?? null;
+        $objectid = $data['id'] ?? null;
+
+        // Dedup: if an un-downloaded update exists for the same object, update it instead.
+        if ($objectid !== null) {
+            $params = [
+                'updatetype' => $type,
+                'action' => $action,
+                'objecttable' => $objecttable,
+                'objectid' => $objectid,
+            ];
+            if ($schoolid !== null) {
+                $params['schoolid'] = $schoolid;
+            }
+            $sql = "SELECT u.id
+                      FROM {" . self::TABLE . "} u
+                 LEFT JOIN {" . self::TRACKING_TABLE . "} t ON t.updateid = u.id
+                     WHERE u.updatetype = :updatetype
+                       AND u.action = :action
+                       AND u.objecttable = :objecttable
+                       AND u.objectid = :objectid
+                       AND " . ($schoolid !== null ? "u.schoolid = :schoolid" : "u.schoolid IS NULL") . "
+                       AND t.id IS NULL";
+            $existing = $DB->get_record_sql($sql, $params);
+
+            if ($existing) {
+                $DB->update_record(self::TABLE, (object) [
+                    'id' => $existing->id,
+                    'payload' => json_encode($data),
+                    'priority' => $priority,
+                    'timecreated' => time(),
+                ]);
+                return $existing->id;
+            }
+        }
+
         $update = new stdClass();
         $update->schoolid = $schoolid;
         $update->updatetype = $type;
         $update->action = $action;
-        $update->objecttable = $data['table'] ?? null;
-        $update->objectid = $data['id'] ?? null;
+        $update->objecttable = $objecttable;
+        $update->objectid = $objectid;
         $update->payload = json_encode($data);
         $update->priority = $priority;
         $update->timecreated = time();
