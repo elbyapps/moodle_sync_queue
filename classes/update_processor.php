@@ -140,8 +140,14 @@ class update_processor {
             }
         }
 
-        // Fallback: try to find course by idnumber before creating a new one.
+        // Fallback: try to find course by idnumber or shortname before creating a new one.
         $existingcourse = $DB->get_record('course', ['idnumber' => 'central_' . $centralid]);
+        if (!$existingcourse && !empty($data['idnumber'])) {
+            $existingcourse = $DB->get_record('course', ['idnumber' => $data['idnumber']]);
+        }
+        if (!$existingcourse && !empty($data['shortname'])) {
+            $existingcourse = $DB->get_record('course', ['shortname' => $data['shortname']]);
+        }
         if ($existingcourse) {
             // Repair the mapping and update.
             $this->mapper->set_mapping('course', $existingcourse->id, $centralid);
@@ -457,6 +463,41 @@ class update_processor {
         // Get local IDs.
         $localuserid = $this->mapper->get_local_id('user', $data['userid']);
         $localcourseid = $this->mapper->get_local_id('course', $data['courseid']);
+
+        // Fallback: look up user by email/username.
+        if (!$localuserid && !empty($data['user'])) {
+            $userinfo = $data['user'];
+            $localuser = null;
+            if (!empty($userinfo['email'])) {
+                $localuser = $DB->get_record('user', ['email' => $userinfo['email']]);
+            }
+            if (!$localuser && !empty($userinfo['username'])) {
+                $localuser = $DB->get_record('user', ['username' => $userinfo['username']]);
+            }
+            if ($localuser) {
+                $localuserid = $localuser->id;
+                $this->mapper->set_mapping('user', $localuser->id, $data['userid']);
+            }
+        }
+
+        // Fallback: look up course by idnumber or shortname.
+        if (!$localcourseid && !empty($data['course'])) {
+            $courseinfo = $data['course'];
+            $localcourse = null;
+            if (!empty($courseinfo['idnumber'])) {
+                $localcourse = $DB->get_record('course', ['idnumber' => $courseinfo['idnumber']]);
+            }
+            if (!$localcourse) {
+                $localcourse = $DB->get_record('course', ['idnumber' => 'central_' . $data['courseid']]);
+            }
+            if (!$localcourse && !empty($courseinfo['shortname'])) {
+                $localcourse = $DB->get_record('course', ['shortname' => $courseinfo['shortname']]);
+            }
+            if ($localcourse) {
+                $localcourseid = $localcourse->id;
+                $this->mapper->set_mapping('course', $localcourse->id, $data['courseid']);
+            }
+        }
 
         if (!$localuserid || !$localcourseid) {
             return false; // Can't enrol without both.
