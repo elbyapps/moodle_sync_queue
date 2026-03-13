@@ -140,6 +140,22 @@ class update_processor {
             }
         }
 
+        // Fallback: try to find course by idnumber before creating a new one.
+        $existingcourse = $DB->get_record('course', ['idnumber' => 'central_' . $centralid]);
+        if ($existingcourse) {
+            // Repair the mapping and update.
+            $this->mapper->set_mapping('course', $existingcourse->id, $centralid);
+            $existingcourse->fullname = $data['fullname'];
+            $existingcourse->shortname = $this->ensure_unique_shortname($data['shortname'], $existingcourse->id);
+            $existingcourse->summary = $data['summary'] ?? '';
+            $existingcourse->visible = $data['visible'] ?? 1;
+            $existingcourse->startdate = $data['startdate'] ?? time();
+            $existingcourse->enddate = $data['enddate'] ?? 0;
+            $existingcourse->timemodified = time();
+            update_course($existingcourse);
+            return true;
+        }
+
         // Course doesn't exist locally - create it.
         // Check if we have a backup to restore.
         if (!empty($data['backup']) && !empty($data['backup']['has_backup'])) {
