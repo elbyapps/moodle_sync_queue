@@ -380,7 +380,7 @@ class update_processor {
     protected function process_user_update(array $update): bool {
         global $DB;
 
-        $data = $update['data'];
+        $data = is_string($update['data']) ? json_decode($update['data'], true) : $update['data'];
         $centralid = $data['id'];
 
         // Try to find user by email or username.
@@ -436,7 +436,7 @@ class update_processor {
     protected function process_enrolment_update(array $update): bool {
         global $DB;
 
-        $data = $update['data'];
+        $data = is_string($update['data']) ? json_decode($update['data'], true) : $update['data'];
 
         // Get local IDs.
         $localuserid = $this->mapper->get_local_id('user', $data['userid']);
@@ -504,7 +504,7 @@ class update_processor {
         // Course content updates require backup/restore.
         // This is a placeholder for the more complex implementation.
 
-        $data = $update['data'];
+        $data = is_string($update['data']) ? json_decode($update['data'], true) : $update['data'];
         $backupurl = $data['backup_url'] ?? null;
 
         if (!$backupurl) {
