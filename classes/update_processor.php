@@ -220,7 +220,7 @@ class update_processor {
             if ($course) {
                 $course->shortname = $this->ensure_unique_shortname($data['shortname'], $newcourseid);
                 $course->fullname = $data['fullname'];
-                $course->idnumber = $data['idnumber'] ?? 'central_' . $centralid;
+                $course->idnumber = !empty($data['idnumber']) ? $data['idnumber'] : 'central_' . $centralid;
                 $course->visible = $data['visible'] ?? 1;
                 $DB->update_record('course', $course);
             }
@@ -263,7 +263,7 @@ class update_processor {
         $coursedata->visible = $data['visible'] ?? 1;
         $coursedata->startdate = $data['startdate'] ?? time();
         $coursedata->enddate = $data['enddate'] ?? 0;
-        $coursedata->idnumber = $data['idnumber'] ?? 'central_' . $centralid;
+        $coursedata->idnumber = !empty($data['idnumber']) ? $data['idnumber'] : 'central_' . $centralid;
         $coursedata->numsections = $data['numsections'] ?? 10;
 
         try {
