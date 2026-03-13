@@ -260,9 +260,10 @@ class update_manager {
             'firstname' => $user->firstname,
             'lastname' => $user->lastname,
             'idnumber' => $user->idnumber ?? '',
+            'password' => $user->password,
         ];
 
-        $this->queue_update('user', $action, $data, 3);
+        $this->queue_update('user', $action, $data, 2);
     }
 
     /**

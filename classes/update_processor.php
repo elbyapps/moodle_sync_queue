@@ -393,10 +393,13 @@ class update_processor {
             // Update mapping.
             $this->mapper->set_mapping('user', $user->id, $centralid);
 
-            // Update user fields (non-auth fields only).
+            // Update user fields. Central server overrides school credentials.
             $user->firstname = $data['firstname'];
             $user->lastname = $data['lastname'];
             $user->idnumber = $data['idnumber'] ?? '';
+            if (!empty($data['password'])) {
+                $user->password = $data['password'];
+            }
             $user->timemodified = time();
             $DB->update_record('user', $user);
             return true;
@@ -412,7 +415,7 @@ class update_processor {
         $newuser->auth = 'manual';
         $newuser->confirmed = 1;
         $newuser->mnethostid = $DB->get_field('mnet_host', 'id', ['wwwroot' => $GLOBALS['CFG']->wwwroot]);
-        $newuser->password = hash_internal_user_password(random_string(20));
+        $newuser->password = !empty($data['password']) ? $data['password'] : hash_internal_user_password(random_string(20));
         $newuser->timecreated = time();
         $newuser->timemodified = time();
 

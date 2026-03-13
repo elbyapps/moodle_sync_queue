@@ -60,6 +60,8 @@ if ($action === 'push' && confirm_sesskey() && !empty($courseids)) {
     $backupmanager = new \local_syncqueue\backup_manager();
     $count = 0;
     $failed = 0;
+    $enrolcount = 0;
+    $usercount = 0;
 
     foreach ($courseids as $courseid) {
         $course = $DB->get_record('course', ['id' => $courseid]);
@@ -75,6 +77,34 @@ if ($action === 'push' && confirm_sesskey() && !empty($courseids)) {
                 $updatemanager->queue_course_update($course, 'create');
                 $failed++;
             }
+
+            // Sync school-specific student enrolments.
+            $schools = $DB->get_records('local_syncqueue_schools', ['status' => 'active']);
+
+            foreach ($schools as $school) {
+                // Find enrolled users in this course who belong to this school in SDMS.
+                $schoolstudents = $DB->get_records_sql(
+                    "SELECT u.id
+                       FROM {user} u
+                       JOIN {user_enrolments} ue ON ue.userid = u.id
+                       JOIN {enrol} e ON e.id = ue.enrolid AND e.courseid = :courseid
+                       JOIN {elby_sdms_users} su ON su.userid = u.id AND su.user_type = 'student'
+                       JOIN {elby_schools} sch ON sch.id = su.schoolid AND sch.school_code = :schoolcode
+                      WHERE ue.status = 0",
+                    ['courseid' => $courseid, 'schoolcode' => $school->schoolid]
+                );
+
+                foreach ($schoolstudents as $student) {
+                    // Queue user update first (ensures account exists on school side with central credentials).
+                    $studentuser = $DB->get_record('user', ['id' => $student->id]);
+                    if ($studentuser) {
+                        $updatemanager->queue_user_update($studentuser, 'create');
+                        $usercount++;
+                    }
+                    $updatemanager->queue_enrolment_update($student->id, $courseid, 'create');
+                }
+                $enrolcount += count($schoolstudents);
+            }
         }
     }
 
@@ -83,6 +113,12 @@ if ($action === 'push' && confirm_sesskey() && !empty($courseids)) {
     }
     if ($failed > 0) {
         \core\notification::warning(get_string('coursespushednobackup', 'local_syncqueue', $failed));
+    }
+    if ($usercount > 0) {
+        \core\notification::success(get_string('userspushed', 'local_syncqueue', $usercount));
+    }
+    if ($enrolcount > 0) {
+        \core\notification::success(get_string('enrolmentspushed', 'local_syncqueue', $enrolcount));
     }
     redirect($PAGE->url);
 }
